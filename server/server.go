@@ -740,23 +740,23 @@ func (s *MCPServer) handleListTools(
 				// Override or add session-specific tools
 				// We need to create a map first to merge the tools properly
 				toolMap := make(map[string]mcp.Tool)
-				
+
 				// Add global tools first
 				for _, tool := range tools {
 					toolMap[tool.Name] = tool
 				}
-				
+
 				// Then override with session-specific tools
 				for name, serverTool := range sessionTools {
 					toolMap[name] = serverTool.Tool
 				}
-				
+
 				// Convert back to slice
 				tools = make([]mcp.Tool, 0, len(toolMap))
 				for _, tool := range toolMap {
 					tools = append(tools, tool)
 				}
-				
+
 				// Sort again to maintain consistent ordering
 				sort.Slice(tools, func(i, j int) bool {
 					return tools[i].Name < tools[j].Name
@@ -783,7 +783,7 @@ func (s *MCPServer) handleListTools(
 			err:  err,
 		}
 	}
-	
+
 	result := mcp.ListToolsResult{
 		Tools: toolsToReturn,
 		PaginatedResult: mcp.PaginatedResult{
@@ -801,7 +801,7 @@ func (s *MCPServer) handleToolCall(
 	// First check session-specific tools
 	var tool ServerTool
 	var ok bool
-	
+
 	session := ClientSessionFromContext(ctx)
 	if session != nil {
 		if sessionWithTools, ok := session.(SessionWithTools); ok {
@@ -810,7 +810,7 @@ func (s *MCPServer) handleToolCall(
 			}
 		}
 	}
-	
+
 	// If not found in session tools, check global tools
 	if !ok {
 		s.toolsMu.RLock()

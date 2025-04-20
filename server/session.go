@@ -183,7 +183,7 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
-	
+
 	return nil
 }
 
@@ -212,6 +212,6 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
-	
+
 	return nil
 }

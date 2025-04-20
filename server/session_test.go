@@ -109,7 +109,7 @@ func TestSessionWithTools_Integration(t *testing.T) {
 	// Check if the session can be cast to SessionWithTools
 	swt, ok := s.(SessionWithTools)
 	require.True(t, ok, "Session should implement SessionWithTools")
-	
+
 	// Check if the tools are accessible
 	tools := swt.GetSessionTools()
 	require.NotNil(t, tools, "Session tools should be available")
@@ -121,13 +121,13 @@ func TestSessionWithTools_Integration(t *testing.T) {
 		tool, exists := tools["session-tool"]
 		require.True(t, exists, "Session tool should exist in the map")
 		require.NotNil(t, tool, "Session tool should not be nil")
-		
+
 		// Now test calling directly with the handler
 		result, err := tool.Handler(sessionCtx, testReq)
 		require.NoError(t, err, "No error calling session tool handler directly")
 		require.NotNil(t, result, "Result should not be nil")
 		require.Len(t, result.Content, 1, "Result should have one content item")
-		
+
 		textContent, ok := result.Content[0].(mcp.TextContent)
 		require.True(t, ok, "Content should be TextContent")
 		assert.Equal(t, "session-tool result", textContent.Text, "Result text should match")
@@ -137,13 +137,13 @@ func TestSessionWithTools_Integration(t *testing.T) {
 func TestMCPServer_ToolsWithSessionTools(t *testing.T) {
 	// Basic test to verify that session-specific tools are returned correctly in a tools list
 	server := NewMCPServer("test-server", "1.0.0", WithToolCapabilities(true))
-	
+
 	// Add global tools
 	server.AddTools(
 		ServerTool{Tool: mcp.NewTool("global-tool-1")},
 		ServerTool{Tool: mcp.NewTool("global-tool-2")},
 	)
-	
+
 	// Create a session with tools
 	session := &fakeSessionWithTools{
 		sessionID:           "session-1",
@@ -154,11 +154,11 @@ func TestMCPServer_ToolsWithSessionTools(t *testing.T) {
 			"global-tool-1":  {Tool: mcp.NewTool("global-tool-1", mcp.WithDescription("Overridden"))},
 		},
 	}
-	
+
 	// Register the session
 	err := server.RegisterSession(context.Background(), session)
 	require.NoError(t, err)
-	
+
 	// List tools with session context
 	sessionCtx := server.WithContext(context.Background(), session)
 	resp := server.HandleMessage(sessionCtx, []byte(`{
@@ -166,16 +166,16 @@ func TestMCPServer_ToolsWithSessionTools(t *testing.T) {
 		"id": 1,
 		"method": "tools/list"
 	}`))
-	
+
 	jsonResp, ok := resp.(mcp.JSONRPCResponse)
 	require.True(t, ok, "Response should be a JSONRPCResponse")
-	
+
 	result, ok := jsonResp.Result.(mcp.ListToolsResult)
 	require.True(t, ok, "Result should be a ListToolsResult")
-	
+
 	// Should have 3 tools - 2 global tools (one overridden) and 1 session-specific tool
 	assert.Len(t, result.Tools, 3, "Should have 3 tools")
-	
+
 	// Find the overridden tool and verify its description
 	var found bool
 	for _, tool := range result.Tools {
@@ -205,7 +205,7 @@ func TestMCPServer_AddSessionTools(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add session-specific tools
-	err = server.AddSessionTools(session.SessionID(), 
+	err = server.AddSessionTools(session.SessionID(),
 		ServerTool{Tool: mcp.NewTool("session-tool")},
 	)
 	require.NoError(t, err)
@@ -321,43 +321,43 @@ func TestMCPServer_ToolFiltering(t *testing.T) {
 	}`))
 	resp, ok := response.(mcp.JSONRPCResponse)
 	require.True(t, ok)
-	
+
 	result, ok := resp.Result.(mcp.ListToolsResult)
 	require.True(t, ok)
-	
+
 	// Should only include tools with the "allow-" prefix
 	assert.Len(t, result.Tools, 3)
-	
+
 	// Verify all tools start with "allow-"
 	for _, tool := range result.Tools {
-		assert.True(t, len(tool.Name) >= 6 && tool.Name[:6] == "allow-", 
+		assert.True(t, len(tool.Name) >= 6 && tool.Name[:6] == "allow-",
 			"Tool should start with 'allow-', got: %s", tool.Name)
 	}
 }
 
 func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0")
-	
+
 	session1Chan := make(chan mcp.JSONRPCNotification, 10)
 	session1 := &fakeSession{
 		sessionID:           "session-1",
 		notificationChannel: session1Chan,
 		initialized:         true,
 	}
-	
+
 	session2Chan := make(chan mcp.JSONRPCNotification, 10)
 	session2 := &fakeSession{
 		sessionID:           "session-2",
 		notificationChannel: session2Chan,
 		initialized:         true,
 	}
-	
+
 	session3 := &fakeSession{
 		sessionID:           "session-3",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
 		initialized:         false, // Not initialized
 	}
-	
+
 	// Register sessions
 	err := server.RegisterSession(context.Background(), session1)
 	require.NoError(t, err)
@@ -365,13 +365,13 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	require.NoError(t, err)
 	err = server.RegisterSession(context.Background(), session3)
 	require.NoError(t, err)
-	
+
 	// Send notification to session 1
 	err = server.SendNotificationToSpecificClient(session1.SessionID(), "test-method", map[string]any{
 		"data": "test-data",
 	})
 	require.NoError(t, err)
-	
+
 	// Check that only session 1 received the notification
 	select {
 	case notification := <-session1Chan:
@@ -380,7 +380,7 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Expected notification not received by session 1")
 	}
-	
+
 	// Verify session 2 did not receive notification
 	select {
 	case notification := <-session2Chan:
@@ -388,12 +388,12 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		// Expected, no notification for session 2
 	}
-	
+
 	// Test sending to non-existent session
 	err = server.SendNotificationToSpecificClient("non-existent", "test-method", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
-	
+
 	// Test sending to uninitialized session
 	err = server.SendNotificationToSpecificClient(session3.SessionID(), "test-method", nil)
 	assert.Error(t, err)
