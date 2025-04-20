@@ -65,8 +65,13 @@ func (s *MCPServer) UnregisterSession(
 	ctx context.Context,
 	sessionID string,
 ) {
-	session, _ := s.sessions.LoadAndDelete(sessionID)
-	s.hooks.UnregisterSession(ctx, session.(ClientSession))
+	sessionValue, ok := s.sessions.LoadAndDelete(sessionID)
+	if !ok {
+		return
+	}
+	if session, ok := sessionValue.(ClientSession); ok {
+		s.hooks.UnregisterSession(ctx, session)
+	}
 }
 
 // SendNotificationToAllClients sends a notification to all the currently active clients.
