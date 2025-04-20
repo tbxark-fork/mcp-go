@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -87,8 +88,20 @@ func (s *MCPServer) SendNotificationToAllClients(
 		if session, ok := v.(ClientSession); ok && session.Initialized() {
 			select {
 			case session.NotificationChannel() <- notification:
+				// Successfully sent notification
 			default:
-				// TODO: log blocked channel in the future versions
+				// Channel is blocked, if there's an error hook, use it
+				if s.hooks != nil && len(s.hooks.OnError) > 0 {
+					err := ErrNotificationChannelBlocked
+					go func(sessionID string) {
+						ctx := context.Background()
+						// Use the error hook to report the blocked channel
+						s.hooks.onError(ctx, nil, "notification", map[string]interface{}{
+							"method":    method,
+							"sessionID": sessionID,
+						}, fmt.Errorf("notification channel blocked for session %s: %w", sessionID, err))
+					}(session.SessionID())
+				}
 			}
 		}
 		return true
@@ -120,6 +133,17 @@ func (s *MCPServer) SendNotificationToClient(
 	case session.NotificationChannel() <- notification:
 		return nil
 	default:
+		// Channel is blocked, if there's an error hook, use it
+		if s.hooks != nil && len(s.hooks.OnError) > 0 {
+			err := ErrNotificationChannelBlocked
+			go func(sessionID string) {
+				// Use the error hook to report the blocked channel
+				s.hooks.onError(ctx, nil, "notification", map[string]interface{}{
+					"method":    method,
+					"sessionID": sessionID,
+				}, fmt.Errorf("notification channel blocked for session %s: %w", sessionID, err))
+			}(session.SessionID())
+		}
 		return ErrNotificationChannelBlocked
 	}
 }
@@ -154,6 +178,18 @@ func (s *MCPServer) SendNotificationToSpecificClient(
 	case session.NotificationChannel() <- notification:
 		return nil
 	default:
+		// Channel is blocked, if there's an error hook, use it
+		if s.hooks != nil && len(s.hooks.OnError) > 0 {
+			err := ErrNotificationChannelBlocked
+			ctx := context.Background()
+			go func(sID string) {
+				// Use the error hook to report the blocked channel
+				s.hooks.onError(ctx, nil, "notification", map[string]interface{}{
+					"method":    method,
+					"sessionID": sID,
+				}, fmt.Errorf("notification channel blocked for session %s: %w", sID, err))
+			}(sessionID)
+		}
 		return ErrNotificationChannelBlocked
 	}
 }
@@ -183,7 +219,7 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
-
+	
 	return nil
 }
 
@@ -212,6 +248,6 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
-
+	
 	return nil
 }

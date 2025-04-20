@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,41 +33,41 @@ func (f sessionTestClient) Initialized() bool {
 	return f.initialized
 }
 
-// fakeSessionWithTools implements the SessionWithTools interface for testing
-type fakeSessionWithTools struct {
+// sessionTestClientWithTools implements the SessionWithTools interface for testing
+type sessionTestClientWithTools struct {
 	sessionID           string
 	notificationChannel chan mcp.JSONRPCNotification
 	initialized         bool
 	sessionTools        map[string]ServerTool
 }
 
-func (f *fakeSessionWithTools) SessionID() string {
+func (f *sessionTestClientWithTools) SessionID() string {
 	return f.sessionID
 }
 
-func (f *fakeSessionWithTools) NotificationChannel() chan<- mcp.JSONRPCNotification {
+func (f *sessionTestClientWithTools) NotificationChannel() chan<- mcp.JSONRPCNotification {
 	return f.notificationChannel
 }
 
-func (f *fakeSessionWithTools) Initialize() {
+func (f *sessionTestClientWithTools) Initialize() {
 	f.initialized = true
 }
 
-func (f *fakeSessionWithTools) Initialized() bool {
+func (f *sessionTestClientWithTools) Initialized() bool {
 	return f.initialized
 }
 
-func (f *fakeSessionWithTools) GetSessionTools() map[string]ServerTool {
+func (f *sessionTestClientWithTools) GetSessionTools() map[string]ServerTool {
 	return f.sessionTools
 }
 
-func (f *fakeSessionWithTools) SetSessionTools(tools map[string]ServerTool) {
+func (f *sessionTestClientWithTools) SetSessionTools(tools map[string]ServerTool) {
 	f.sessionTools = tools
 }
 
 // Verify that both implementations satisfy their respective interfaces
 var _ ClientSession = sessionTestClient{}
-var _ SessionWithTools = &fakeSessionWithTools{}
+var _ SessionWithTools = &sessionTestClientWithTools{}
 
 func TestSessionWithTools_Integration(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0", WithToolCapabilities(true))
@@ -80,7 +81,7 @@ func TestSessionWithTools_Integration(t *testing.T) {
 	}
 
 	// Create a session with tools
-	session := &fakeSessionWithTools{
+	session := &sessionTestClientWithTools{
 		sessionID:           "session-1",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
 		initialized:         true,
@@ -145,7 +146,7 @@ func TestMCPServer_ToolsWithSessionTools(t *testing.T) {
 	)
 
 	// Create a session with tools
-	session := &fakeSessionWithTools{
+	session := &sessionTestClientWithTools{
 		sessionID:           "session-1",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
 		initialized:         true,
@@ -194,7 +195,7 @@ func TestMCPServer_AddSessionTools(t *testing.T) {
 
 	// Create a session
 	sessionChan := make(chan mcp.JSONRPCNotification, 10)
-	session := &fakeSessionWithTools{
+	session := &sessionTestClientWithTools{
 		sessionID:           "session-1",
 		notificationChannel: sessionChan,
 		initialized:         true,
@@ -229,7 +230,7 @@ func TestMCPServer_DeleteSessionTools(t *testing.T) {
 
 	// Create a session with tools
 	sessionChan := make(chan mcp.JSONRPCNotification, 10)
-	session := &fakeSessionWithTools{
+	session := &sessionTestClientWithTools{
 		sessionID:           "session-1",
 		notificationChannel: sessionChan,
 		initialized:         true,
@@ -294,7 +295,7 @@ func TestMCPServer_ToolFiltering(t *testing.T) {
 	)
 
 	// Create a session with tools
-	session := &fakeSessionWithTools{
+	session := &sessionTestClientWithTools{
 		sessionID:           "session-1",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
 		initialized:         true,
@@ -339,20 +340,20 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0")
 
 	session1Chan := make(chan mcp.JSONRPCNotification, 10)
-	session1 := &fakeSession{
+	session1 := &sessionTestClient{
 		sessionID:           "session-1",
 		notificationChannel: session1Chan,
 		initialized:         true,
 	}
 
 	session2Chan := make(chan mcp.JSONRPCNotification, 10)
-	session2 := &fakeSession{
+	session2 := &sessionTestClient{
 		sessionID:           "session-2",
 		notificationChannel: session2Chan,
 		initialized:         true,
 	}
 
-	session3 := &fakeSession{
+	session3 := &sessionTestClient{
 		sessionID:           "session-3",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
 		initialized:         false, // Not initialized
@@ -398,4 +399,75 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	err = server.SendNotificationToSpecificClient(session3.SessionID(), "test-method", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not properly initialized")
+}
+
+func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
+	// Set up a hooks object to capture error notifications
+	errorCaptured := false
+	errorSessionID := ""
+	errorMethod := ""
+	
+	hooks := &Hooks{}
+	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		errorCaptured = true
+		// Extract session ID and method from the error message metadata
+		if msgMap, ok := message.(map[string]interface{}); ok {
+			if sid, ok := msgMap["sessionID"].(string); ok {
+				errorSessionID = sid
+			}
+			if m, ok := msgMap["method"].(string); ok {
+				errorMethod = m
+			}
+		}
+		// Verify the error is a notification channel blocked error
+		assert.True(t, errors.Is(err, ErrNotificationChannelBlocked))
+	})
+	
+	// Create a server with hooks
+	server := NewMCPServer("test-server", "1.0.0", WithHooks(hooks))
+	
+	// Create a session with a very small buffer that will get blocked
+	smallBufferChan := make(chan mcp.JSONRPCNotification, 1)
+	session := &sessionTestClient{
+		sessionID:           "blocked-session",
+		notificationChannel: smallBufferChan,
+		initialized:         true,
+	}
+	
+	// Register the session
+	err := server.RegisterSession(context.Background(), session)
+	require.NoError(t, err)
+	
+	// Fill the buffer first to ensure it gets blocked
+	server.SendNotificationToSpecificClient(session.SessionID(), "first-message", nil)
+	
+	// This will cause the buffer to block
+	err = server.SendNotificationToSpecificClient(session.SessionID(), "blocked-message", nil)
+	assert.Error(t, err)
+	assert.Equal(t, ErrNotificationChannelBlocked, err)
+	
+	// Wait a bit for the goroutine to execute
+	time.Sleep(10 * time.Millisecond)
+	
+	// Verify the error was logged via hooks
+	assert.True(t, errorCaptured, "Error hook should have been called")
+	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
+	assert.Equal(t, "blocked-message", errorMethod, "Method should be captured in the error hook")
+	
+	// Also test SendNotificationToAllClients with a blocked channel
+	// Reset the captured data
+	errorCaptured = false
+	errorSessionID = ""
+	errorMethod = ""
+	
+	// Send to all clients (which includes our blocked one)
+	server.SendNotificationToAllClients("broadcast-message", nil)
+	
+	// Wait a bit for the goroutine to execute
+	time.Sleep(10 * time.Millisecond)
+	
+	// Verify the error was logged via hooks
+	assert.True(t, errorCaptured, "Error hook should have been called for broadcast")
+	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
+	assert.Equal(t, "broadcast-message", errorMethod, "Method should be captured in the error hook")
 }
