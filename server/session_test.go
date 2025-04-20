@@ -26,9 +26,14 @@ func (f sessionTestClient) NotificationChannel() chan<- mcp.JSONRPCNotification 
 	return f.notificationChannel
 }
 
-func (f sessionTestClient) Initialize() {
+// Initialize marks the session as initialized
+// This implementation properly sets the initialized flag to true
+// as required by the interface contract
+func (f *sessionTestClient) Initialize() {
+	f.initialized = true
 }
 
+// Initialized returns whether the session has been initialized
 func (f sessionTestClient) Initialized() bool {
 	return f.initialized
 }
@@ -66,7 +71,7 @@ func (f *sessionTestClientWithTools) SetSessionTools(tools map[string]ServerTool
 }
 
 // Verify that both implementations satisfy their respective interfaces
-var _ ClientSession = sessionTestClient{}
+var _ ClientSession = &sessionTestClient{}
 var _ SessionWithTools = &sessionTestClientWithTools{}
 
 func TestSessionWithTools_Integration(t *testing.T) {
@@ -343,15 +348,15 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	session1 := &sessionTestClient{
 		sessionID:           "session-1",
 		notificationChannel: session1Chan,
-		initialized:         true,
 	}
+	session1.Initialize()
 
 	session2Chan := make(chan mcp.JSONRPCNotification, 10)
 	session2 := &sessionTestClient{
 		sessionID:           "session-2",
 		notificationChannel: session2Chan,
-		initialized:         true,
 	}
+	session2.Initialize()
 
 	session3 := &sessionTestClient{
 		sessionID:           "session-3",
@@ -406,7 +411,7 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 	errorCaptured := false
 	errorSessionID := ""
 	errorMethod := ""
-	
+
 	hooks := &Hooks{}
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		errorCaptured = true
@@ -422,50 +427,50 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 		// Verify the error is a notification channel blocked error
 		assert.True(t, errors.Is(err, ErrNotificationChannelBlocked))
 	})
-	
+
 	// Create a server with hooks
 	server := NewMCPServer("test-server", "1.0.0", WithHooks(hooks))
-	
+
 	// Create a session with a very small buffer that will get blocked
 	smallBufferChan := make(chan mcp.JSONRPCNotification, 1)
 	session := &sessionTestClient{
 		sessionID:           "blocked-session",
 		notificationChannel: smallBufferChan,
-		initialized:         true,
 	}
-	
+	session.Initialize()
+
 	// Register the session
 	err := server.RegisterSession(context.Background(), session)
 	require.NoError(t, err)
-	
+
 	// Fill the buffer first to ensure it gets blocked
 	server.SendNotificationToSpecificClient(session.SessionID(), "first-message", nil)
-	
+
 	// This will cause the buffer to block
 	err = server.SendNotificationToSpecificClient(session.SessionID(), "blocked-message", nil)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotificationChannelBlocked, err)
-	
+
 	// Wait a bit for the goroutine to execute
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Verify the error was logged via hooks
 	assert.True(t, errorCaptured, "Error hook should have been called")
 	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
 	assert.Equal(t, "blocked-message", errorMethod, "Method should be captured in the error hook")
-	
+
 	// Also test SendNotificationToAllClients with a blocked channel
 	// Reset the captured data
 	errorCaptured = false
 	errorSessionID = ""
 	errorMethod = ""
-	
+
 	// Send to all clients (which includes our blocked one)
 	server.SendNotificationToAllClients("broadcast-message", nil)
-	
+
 	// Wait a bit for the goroutine to execute
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Verify the error was logged via hooks
 	assert.True(t, errorCaptured, "Error hook should have been called for broadcast")
 	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
