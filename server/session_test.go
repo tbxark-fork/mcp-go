@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -361,7 +362,7 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 	session3 := &sessionTestClient{
 		sessionID:           "session-3",
 		notificationChannel: make(chan mcp.JSONRPCNotification, 10),
-		initialized:         false, // Not initialized
+		initialized:         false, // Not initialized - deliberately not calling Initialize()
 	}
 
 	// Register sessions
@@ -408,12 +409,16 @@ func TestMCPServer_SendNotificationToSpecificClient(t *testing.T) {
 
 func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 	// Set up a hooks object to capture error notifications
+	var mu sync.Mutex
 	errorCaptured := false
 	errorSessionID := ""
 	errorMethod := ""
 
 	hooks := &Hooks{}
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+
 		errorCaptured = true
 		// Extract session ID and method from the error message metadata
 		if msgMap, ok := message.(map[string]interface{}); ok {
@@ -455,15 +460,23 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify the error was logged via hooks
-	assert.True(t, errorCaptured, "Error hook should have been called")
-	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
-	assert.Equal(t, "blocked-message", errorMethod, "Method should be captured in the error hook")
+	mu.Lock()
+	localErrorCaptured := errorCaptured
+	localErrorSessionID := errorSessionID
+	localErrorMethod := errorMethod
+	mu.Unlock()
+
+	assert.True(t, localErrorCaptured, "Error hook should have been called")
+	assert.Equal(t, "blocked-session", localErrorSessionID, "Session ID should be captured in the error hook")
+	assert.Equal(t, "blocked-message", localErrorMethod, "Method should be captured in the error hook")
 
 	// Also test SendNotificationToAllClients with a blocked channel
 	// Reset the captured data
+	mu.Lock()
 	errorCaptured = false
 	errorSessionID = ""
 	errorMethod = ""
+	mu.Unlock()
 
 	// Send to all clients (which includes our blocked one)
 	server.SendNotificationToAllClients("broadcast-message", nil)
@@ -472,7 +485,13 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify the error was logged via hooks
-	assert.True(t, errorCaptured, "Error hook should have been called for broadcast")
-	assert.Equal(t, "blocked-session", errorSessionID, "Session ID should be captured in the error hook")
-	assert.Equal(t, "broadcast-message", errorMethod, "Method should be captured in the error hook")
+	mu.Lock()
+	localErrorCaptured = errorCaptured
+	localErrorSessionID = errorSessionID
+	localErrorMethod = errorMethod
+	mu.Unlock()
+
+	assert.True(t, localErrorCaptured, "Error hook should have been called for broadcast")
+	assert.Equal(t, "blocked-session", localErrorSessionID, "Session ID should be captured in the error hook")
+	assert.Equal(t, "broadcast-message", localErrorMethod, "Method should be captured in the error hook")
 }
