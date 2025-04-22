@@ -830,7 +830,11 @@ func (s *MCPServer) handleToolCall(
 	if session != nil {
 		if sessionWithTools, ok := session.(SessionWithTools); ok {
 			if sessionTools := sessionWithTools.GetSessionTools(); sessionTools != nil {
-				tool, ok = sessionTools[request.Params.Name]
+				var sessionOk bool
+				tool, sessionOk = sessionTools[request.Params.Name]
+				if sessionOk {
+					ok = true
+				}
 			}
 		}
 	}
