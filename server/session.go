@@ -23,8 +23,10 @@ type ClientSession interface {
 type SessionWithTools interface {
 	ClientSession
 	// GetSessionTools returns the tools specific to this session, if any
+	// This method must be thread-safe for concurrent access
 	GetSessionTools() map[string]ServerTool
 	// SetSessionTools sets tools specific to this session
+	// This method must be thread-safe for concurrent access
 	SetSessionTools(tools map[string]ServerTool)
 }
 
@@ -222,6 +224,7 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 		return ErrSessionDoesNotSupportTools
 	}
 
+	// Get existing tools (this should return a thread-safe copy)
 	sessionTools := session.GetSessionTools()
 	
 	// Create a new map to avoid concurrent modification issues
@@ -239,6 +242,7 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 		newSessionTools[tool.Tool.Name] = tool
 	}
 
+	// Set the tools (this should be thread-safe)
 	session.SetSessionTools(newSessionTools)
 
 	// Send notification only to this session
@@ -272,6 +276,7 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 		return ErrSessionDoesNotSupportTools
 	}
 
+	// Get existing tools (this should return a thread-safe copy)
 	sessionTools := session.GetSessionTools()
 	if sessionTools == nil {
 		return nil
@@ -290,6 +295,7 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 		delete(newSessionTools, name)
 	}
 
+	// Set the tools (this should be thread-safe)
 	session.SetSessionTools(newSessionTools)
 
 	// Send notification only to this session
