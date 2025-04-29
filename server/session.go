@@ -217,15 +217,23 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 	}
 
 	sessionTools := session.GetSessionTools()
-	if sessionTools == nil {
-		sessionTools = make(map[string]ServerTool)
+	
+	// Create a new map to avoid concurrent modification issues
+	newSessionTools := make(map[string]ServerTool, len(sessionTools)+len(tools))
+	
+	// Copy existing tools
+	if sessionTools != nil {
+		for k, v := range sessionTools {
+			newSessionTools[k] = v
+		}
 	}
 
+	// Add new tools
 	for _, tool := range tools {
-		sessionTools[tool.Tool.Name] = tool
+		newSessionTools[tool.Tool.Name] = tool
 	}
 
-	session.SetSessionTools(sessionTools)
+	session.SetSessionTools(newSessionTools)
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
@@ -250,11 +258,20 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 		return nil
 	}
 
-	for _, name := range names {
-		delete(sessionTools, name)
+	// Create a new map to avoid concurrent modification issues
+	newSessionTools := make(map[string]ServerTool, len(sessionTools))
+	
+	// Copy existing tools except those being deleted
+	for k, v := range sessionTools {
+		newSessionTools[k] = v
 	}
 
-	session.SetSessionTools(sessionTools)
+	// Remove specified tools
+	for _, name := range names {
+		delete(newSessionTools, name)
+	}
+
+	session.SetSessionTools(newSessionTools)
 
 	// Send notification only to this session
 	s.SendNotificationToSpecificClient(sessionID, "notifications/tools/list_changed", nil)
