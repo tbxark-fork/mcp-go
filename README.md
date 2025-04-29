@@ -626,6 +626,21 @@ userSpecificTool := mcp.NewTool(
     "user_data",
     mcp.WithDescription("Access user-specific data"),
 )
+// You can use AddSessionTool (similar to AddTool)
+err := s.AddSessionTool(
+    advSession.SessionID(),
+    userSpecificTool,
+    func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+        // This handler is only available to this specific session
+        return mcp.NewToolResultText("User-specific data for " + advSession.SessionID()), nil
+    },
+)
+if err != nil {
+    log.Printf("Failed to add session tool: %v", err)
+}
+
+// Or use AddSessionTools directly with ServerTool
+/*
 err := s.AddSessionTools(
     advSession.SessionID(),
     server.ServerTool{
@@ -639,6 +654,7 @@ err := s.AddSessionTools(
 if err != nil {
     log.Printf("Failed to add session tool: %v", err)
 }
+*/
 
 // Delete session-specific tools when no longer needed
 err = s.DeleteSessionTools(advSession.SessionID(), "user_data")

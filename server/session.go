@@ -199,6 +199,11 @@ func (s *MCPServer) SendNotificationToSpecificClient(
 	}
 }
 
+// AddSessionTool adds a tool for a specific session
+func (s *MCPServer) AddSessionTool(sessionID string, tool mcp.Tool, handler ToolHandlerFunc) error {
+	return s.AddSessionTools(sessionID, ServerTool{Tool: tool, Handler: handler})
+}
+
 // AddSessionTools adds tools for a specific session
 func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error {
 	sessionValue, ok := s.sessions.Load(sessionID)
