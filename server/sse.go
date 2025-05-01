@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -68,6 +69,8 @@ type SSEServer struct {
 	keepAliveInterval time.Duration
 
 	mu sync.RWMutex
+
+	appendQueryToMessageEndpoint bool
 }
 
 // SSEOption defines a function type for configuring SSEServer
@@ -111,6 +114,17 @@ func WithBasePath(basePath string) SSEOption {
 func WithMessageEndpoint(endpoint string) SSEOption {
 	return func(s *SSEServer) {
 		s.messageEndpoint = endpoint
+	}
+}
+
+// WithAppendQueryToMessageEndpoint configures the SSE server to append the original request's
+// query parameters to the message endpoint URL that is sent to clients during the SSE connection
+// initialization. This is useful when you need to preserve query parameters from the initial
+// SSE connection request and carry them over to subsequent message requests, maintaining
+// context or authentication details across the communication channel.
+func WithAppendQueryToMessageEndpoint() SSEOption {
+	return func(s *SSEServer) {
+		s.appendQueryToMessageEndpoint = true
 	}
 }
 
@@ -317,7 +331,11 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the initial endpoint event
-	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", s.GetMessageEndpointForClient(sessionID))
+	endpoint := s.GetMessageEndpointForClient(sessionID)
+	if s.appendQueryToMessageEndpoint && len(r.URL.RawQuery) > 0 {
+		endpoint += "&" + r.URL.RawQuery
+	}
+	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", endpoint)
 	flusher.Flush()
 
 	// Main event loop - this runs in the HTTP handler goroutine
@@ -347,7 +365,7 @@ func (s *SSEServer) GetMessageEndpointForClient(sessionID string) string {
 }
 
 // handleMessage processes incoming JSON-RPC messages from clients and sends responses
-// back through both the SSE connection and HTTP response.
+// back through the SSE connection and 202 code to HTTP response.
 func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeJSONRPCError(w, nil, mcp.INVALID_REQUEST, "Method not allowed")
@@ -379,31 +397,37 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process message through MCPServer
-	response := s.server.HandleMessage(ctx, rawMessage)
+	// quick return request, send 202 Accepted with no body, then deal the message and sent response via SSE
+	w.WriteHeader(http.StatusAccepted)
 
-	// Only send response if there is one (not for notifications)
-	if response != nil {
-		eventData, _ := json.Marshal(response)
+	go func() {
+		// Process message through MCPServer
+		response := s.server.HandleMessage(ctx, rawMessage)
 
-		// Queue the event for sending via SSE
-		select {
-		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
-			// Event queued successfully
-		case <-session.done:
-			// Session is closed, don't try to queue
-		default:
-			// Queue is full, could log this
+		// Only send response if there is one (not for notifications)
+		if response != nil {
+			var message string
+			if eventData, err := json.Marshal(response); err != nil {
+				// If there is an error marshalling the response, send a generic error response
+				log.Printf("failed to marshal response: %v", err)
+				message = fmt.Sprintf("event: message\ndata: {\"error\": \"internal error\",\"jsonrpc\": \"2.0\", \"id\": null}\n\n")
+				return
+			} else {
+				message = fmt.Sprintf("event: message\ndata: %s\n\n", eventData)
+			}
+
+			// Queue the event for sending via SSE
+			select {
+			case session.eventQueue <- message:
+				// Event queued successfully
+			case <-session.done:
+				// Session is closed, don't try to queue
+			default:
+				// Queue is full, log this situation
+				log.Printf("Event queue full for session %s", sessionID)
+			}
 		}
-
-		// Send HTTP response
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(response)
-	} else {
-		// For notifications, just send 202 Accepted with no body
-		w.WriteHeader(http.StatusAccepted)
-	}
+	}()
 }
 
 // writeJSONRPCError writes a JSON-RPC error response with the given error details.
