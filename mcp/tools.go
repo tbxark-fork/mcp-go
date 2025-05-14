@@ -65,7 +65,7 @@ func (r CallToolRequest) GetArguments() map[string]any {
 	if args, ok := r.Params.Arguments.(map[string]any); ok {
 		return args
 	}
-	return map[string]any{}
+	return nil
 }
 
 // GetRawArguments returns the Arguments as-is without type conversion
