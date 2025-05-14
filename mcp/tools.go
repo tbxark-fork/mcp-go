@@ -273,6 +273,190 @@ func (r CallToolRequest) RequireStringSlice(key string) ([]string, error) {
 	return nil, fmt.Errorf("required argument %q not found", key)
 }
 
+// GetIntSlice returns an int slice argument by key, or the default value if not found
+func (r CallToolRequest) GetIntSlice(key string, defaultValue []int) []int {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []int:
+			return v
+		case []any:
+			result := make([]int, 0, len(v))
+			for _, item := range v {
+				switch num := item.(type) {
+				case int:
+					result = append(result, num)
+				case float64:
+					result = append(result, int(num))
+				case string:
+					if i, err := strconv.Atoi(num); err == nil {
+						result = append(result, i)
+					}
+				}
+			}
+			return result
+		}
+	}
+	return defaultValue
+}
+
+// RequireIntSlice returns an int slice argument by key, or an error if not found or not convertible to int slice
+func (r CallToolRequest) RequireIntSlice(key string) ([]int, error) {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []int:
+			return v, nil
+		case []any:
+			result := make([]int, 0, len(v))
+			for i, item := range v {
+				switch num := item.(type) {
+				case int:
+					result = append(result, num)
+				case float64:
+					result = append(result, int(num))
+				case string:
+					if i, err := strconv.Atoi(num); err == nil {
+						result = append(result, i)
+					} else {
+						return nil, fmt.Errorf("item %d in argument %q cannot be converted to int", i, key)
+					}
+				default:
+					return nil, fmt.Errorf("item %d in argument %q is not an int", i, key)
+				}
+			}
+			return result, nil
+		default:
+			return nil, fmt.Errorf("argument %q is not an int slice", key)
+		}
+	}
+	return nil, fmt.Errorf("required argument %q not found", key)
+}
+
+// GetFloatSlice returns a float64 slice argument by key, or the default value if not found
+func (r CallToolRequest) GetFloatSlice(key string, defaultValue []float64) []float64 {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []float64:
+			return v
+		case []any:
+			result := make([]float64, 0, len(v))
+			for _, item := range v {
+				switch num := item.(type) {
+				case float64:
+					result = append(result, num)
+				case int:
+					result = append(result, float64(num))
+				case string:
+					if f, err := strconv.ParseFloat(num, 64); err == nil {
+						result = append(result, f)
+					}
+				}
+			}
+			return result
+		}
+	}
+	return defaultValue
+}
+
+// RequireFloatSlice returns a float64 slice argument by key, or an error if not found or not convertible to float64 slice
+func (r CallToolRequest) RequireFloatSlice(key string) ([]float64, error) {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []float64:
+			return v, nil
+		case []any:
+			result := make([]float64, 0, len(v))
+			for i, item := range v {
+				switch num := item.(type) {
+				case float64:
+					result = append(result, num)
+				case int:
+					result = append(result, float64(num))
+				case string:
+					if f, err := strconv.ParseFloat(num, 64); err == nil {
+						result = append(result, f)
+					} else {
+						return nil, fmt.Errorf("item %d in argument %q cannot be converted to float64", i, key)
+					}
+				default:
+					return nil, fmt.Errorf("item %d in argument %q is not a float64", i, key)
+				}
+			}
+			return result, nil
+		default:
+			return nil, fmt.Errorf("argument %q is not a float64 slice", key)
+		}
+	}
+	return nil, fmt.Errorf("required argument %q not found", key)
+}
+
+// GetBoolSlice returns a bool slice argument by key, or the default value if not found
+func (r CallToolRequest) GetBoolSlice(key string, defaultValue []bool) []bool {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []bool:
+			return v
+		case []any:
+			result := make([]bool, 0, len(v))
+			for _, item := range v {
+				switch b := item.(type) {
+				case bool:
+					result = append(result, b)
+				case string:
+					if parsed, err := strconv.ParseBool(b); err == nil {
+						result = append(result, parsed)
+					}
+				case int:
+					result = append(result, b != 0)
+				case float64:
+					result = append(result, b != 0)
+				}
+			}
+			return result
+		}
+	}
+	return defaultValue
+}
+
+// RequireBoolSlice returns a bool slice argument by key, or an error if not found or not convertible to bool slice
+func (r CallToolRequest) RequireBoolSlice(key string) ([]bool, error) {
+	args := r.GetArguments()
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case []bool:
+			return v, nil
+		case []any:
+			result := make([]bool, 0, len(v))
+			for i, item := range v {
+				switch b := item.(type) {
+				case bool:
+					result = append(result, b)
+				case string:
+					if parsed, err := strconv.ParseBool(b); err == nil {
+						result = append(result, parsed)
+					} else {
+						return nil, fmt.Errorf("item %d in argument %q cannot be converted to bool", i, key)
+					}
+				case int:
+					result = append(result, b != 0)
+				case float64:
+					result = append(result, b != 0)
+				default:
+					return nil, fmt.Errorf("item %d in argument %q is not a bool", i, key)
+				}
+			}
+			return result, nil
+		default:
+			return nil, fmt.Errorf("argument %q is not a bool slice", key)
+		}
+	}
+	return nil, fmt.Errorf("required argument %q not found", key)
+}
+
 // ToolListChangedNotification is an optional notification from the server to
 // the client, informing it that the list of tools it offers has changed. This may
 // be issued by servers without any previous subscription from the client.

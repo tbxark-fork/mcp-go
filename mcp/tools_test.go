@@ -345,6 +345,9 @@ func TestCallToolRequestHelperFunctions(t *testing.T) {
 		"float_val":        3.14,
 		"bool_val":         true,
 		"string_slice_val": []any{"one", "two", "three"},
+		"int_slice_val":    []any{1, 2, 3},
+		"float_slice_val":  []any{1.1, 2.2, 3.3},
+		"bool_slice_val":   []any{true, false, true},
 	}
 
 	// Test GetString
@@ -400,6 +403,39 @@ func TestCallToolRequestHelperFunctions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"one", "two", "three"}, ss)
 	_, err = req.RequireStringSlice("missing_val")
+	assert.Error(t, err)
+
+	// Test GetIntSlice
+	assert.Equal(t, []int{1, 2, 3}, req.GetIntSlice("int_slice_val", nil))
+	assert.Equal(t, []int{42}, req.GetIntSlice("missing_val", []int{42}))
+
+	// Test RequireIntSlice
+	is, err := req.RequireIntSlice("int_slice_val")
+	assert.NoError(t, err)
+	assert.Equal(t, []int{1, 2, 3}, is)
+	_, err = req.RequireIntSlice("missing_val")
+	assert.Error(t, err)
+
+	// Test GetFloatSlice
+	assert.Equal(t, []float64{1.1, 2.2, 3.3}, req.GetFloatSlice("float_slice_val", nil))
+	assert.Equal(t, []float64{4.4}, req.GetFloatSlice("missing_val", []float64{4.4}))
+
+	// Test RequireFloatSlice
+	fs, err := req.RequireFloatSlice("float_slice_val")
+	assert.NoError(t, err)
+	assert.Equal(t, []float64{1.1, 2.2, 3.3}, fs)
+	_, err = req.RequireFloatSlice("missing_val")
+	assert.Error(t, err)
+
+	// Test GetBoolSlice
+	assert.Equal(t, []bool{true, false, true}, req.GetBoolSlice("bool_slice_val", nil))
+	assert.Equal(t, []bool{false}, req.GetBoolSlice("missing_val", []bool{false}))
+
+	// Test RequireBoolSlice
+	bs, err := req.RequireBoolSlice("bool_slice_val")
+	assert.NoError(t, err)
+	assert.Equal(t, []bool{true, false, true}, bs)
+	_, err = req.RequireBoolSlice("missing_val")
 	assert.Error(t, err)
 }
 
