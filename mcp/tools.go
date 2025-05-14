@@ -77,11 +77,20 @@ func (r CallToolRequest) GetRawArguments() any {
 // BindArguments unmarshals the Arguments into the provided struct
 // This is useful for working with strongly-typed arguments
 func (r CallToolRequest) BindArguments(target any) error {
+	if target == nil || reflect.ValueOf(target).Kind() != reflect.Ptr {
+		return fmt.Errorf("target must be a non-nil pointer")
+	}
+
+	// Fast-path: already raw JSON
+	if raw, ok := r.Params.Arguments.(json.RawMessage); ok {
+		return json.Unmarshal(raw, target)
+	}
+
 	data, err := json.Marshal(r.Params.Arguments)
 	if err != nil {
 		return fmt.Errorf("failed to marshal arguments: %w", err)
 	}
-	
+
 	return json.Unmarshal(data, target)
 }
 
