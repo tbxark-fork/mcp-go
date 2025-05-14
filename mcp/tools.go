@@ -44,8 +44,8 @@ type CallToolResult struct {
 type CallToolRequest struct {
 	Request
 	Params struct {
-		Name      string         `json:"name"`
-		Arguments map[string]any `json:"arguments,omitempty"`
+		Name      string      `json:"name"`
+		Arguments any `json:"arguments,omitempty"` // Can be map[string]any or any other type
 		Meta      *struct {
 			// If specified, the caller is requesting out-of-band progress
 			// notifications for this request (as represented by
@@ -56,6 +56,21 @@ type CallToolRequest struct {
 			ProgressToken ProgressToken `json:"progressToken,omitempty"`
 		} `json:"_meta,omitempty"`
 	} `json:"params"`
+}
+
+// GetArguments returns the Arguments as map[string]any for backward compatibility
+// If Arguments is not a map, it returns an empty map
+func (r CallToolRequest) GetArguments() map[string]any {
+	if args, ok := r.Params.Arguments.(map[string]any); ok {
+		return args
+	}
+	return map[string]any{}
+}
+
+// GetRawArguments returns the Arguments as-is without type conversion
+// This allows users to access the raw arguments in any format
+func (r CallToolRequest) GetRawArguments() any {
+	return r.Params.Arguments
 }
 
 // ToolListChangedNotification is an optional notification from the server to
