@@ -149,10 +149,21 @@ func main() {
 
     // Add the calculator handler
     s.AddTool(calculatorTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        args := request.GetArguments()
-        op := args["operation"].(string)
-        x := args["x"].(float64)
-        y := args["y"].(float64)
+        // Using helper functions for type-safe argument access
+        op, err := request.RequireString("operation")
+        if err != nil {
+            return mcp.NewToolResultError(err.Error()), nil
+        }
+        
+        x, err := request.RequireFloat("x")
+        if err != nil {
+            return mcp.NewToolResultError(err.Error()), nil
+        }
+        
+        y, err := request.RequireFloat("y")
+        if err != nil {
+            return mcp.NewToolResultError(err.Error()), nil
+        }
 
         var result float64
         switch op {
