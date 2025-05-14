@@ -309,92 +309,96 @@ func TestParseToolCallToolRequest(t *testing.T) {
 
 }
 
-func TestCallToolRequestWithMapArguments(t *testing.T) {
+func TestCallToolRequestBindArguments(t *testing.T) {
+	// Define a struct to bind to
+	type TestArgs struct {
+		Name  string `json:"name"`
+		Age   int    `json:"age"`
+		Email string `json:"email"`
+	}
+
 	// Create a request with map arguments
 	req := CallToolRequest{}
 	req.Params.Name = "test-tool"
 	req.Params.Arguments = map[string]any{
-		"key1": "value1",
-		"key2": 123,
+		"name":  "John Doe",
+		"age":   30,
+		"email": "john@example.com",
 	}
 
-	// Test GetArguments
-	args := req.GetArguments()
-	assert.Equal(t, "value1", args["key1"])
-	assert.Equal(t, 123, args["key2"])
-
-	// Test GetRawArguments
-	rawArgs := req.GetRawArguments()
-	mapArgs, ok := rawArgs.(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, "value1", mapArgs["key1"])
-	assert.Equal(t, 123, mapArgs["key2"])
+	// Bind arguments to struct
+	var args TestArgs
+	err := req.BindArguments(&args)
+	assert.NoError(t, err)
+	assert.Equal(t, "John Doe", args.Name)
+	assert.Equal(t, 30, args.Age)
+	assert.Equal(t, "john@example.com", args.Email)
 }
 
-func TestCallToolRequestWithNonMapArguments(t *testing.T) {
-	// Create a request with non-map arguments
-	req := CallToolRequest{}
-	req.Params.Name = "test-tool"
-	req.Params.Arguments = "string-argument"
-
-	// Test GetArguments (should return empty map)
-	args := req.GetArguments()
-	assert.Empty(t, args)
-
-	// Test GetRawArguments
-	rawArgs := req.GetRawArguments()
-	strArg, ok := rawArgs.(string)
-	assert.True(t, ok)
-	assert.Equal(t, "string-argument", strArg)
-}
-
-func TestCallToolRequestWithStructArguments(t *testing.T) {
-	// Create a custom struct
-	type CustomArgs struct {
-		Field1 string `json:"field1"`
-		Field2 int    `json:"field2"`
-	}
-
-	// Create a request with struct arguments
-	req := CallToolRequest{}
-	req.Params.Name = "test-tool"
-	req.Params.Arguments = CustomArgs{
-		Field1: "test",
-		Field2: 42,
-	}
-
-	// Test GetArguments (should return empty map)
-	args := req.GetArguments()
-	assert.Empty(t, args)
-
-	// Test GetRawArguments
-	rawArgs := req.GetRawArguments()
-	structArg, ok := rawArgs.(CustomArgs)
-	assert.True(t, ok)
-	assert.Equal(t, "test", structArg.Field1)
-	assert.Equal(t, 42, structArg.Field2)
-}
-
-func TestCallToolRequestJSONMarshalUnmarshal(t *testing.T) {
+func TestCallToolRequestHelperFunctions(t *testing.T) {
 	// Create a request with map arguments
 	req := CallToolRequest{}
 	req.Params.Name = "test-tool"
 	req.Params.Arguments = map[string]any{
-		"key1": "value1",
-		"key2": 123,
+		"string_val":       "hello",
+		"int_val":          42,
+		"float_val":        3.14,
+		"bool_val":         true,
+		"string_slice_val": []any{"one", "two", "three"},
 	}
 
-	// Marshal to JSON
-	data, err := json.Marshal(req)
-	assert.NoError(t, err)
+	// Test GetString
+	assert.Equal(t, "hello", req.GetString("string_val", "default"))
+	assert.Equal(t, "default", req.GetString("missing_val", "default"))
 
-	// Unmarshal from JSON
-	var unmarshaledReq CallToolRequest
-	err = json.Unmarshal(data, &unmarshaledReq)
+	// Test RequireString
+	str, err := req.RequireString("string_val")
 	assert.NoError(t, err)
+	assert.Equal(t, "hello", str)
+	_, err = req.RequireString("missing_val")
+	assert.Error(t, err)
 
-	// Check if arguments are correctly unmarshaled
-	args := unmarshaledReq.GetArguments()
-	assert.Equal(t, "value1", args["key1"])
-	assert.Equal(t, float64(123), args["key2"]) // JSON numbers are unmarshaled as float64
+	// Test GetInt
+	assert.Equal(t, 42, req.GetInt("int_val", 0))
+	assert.Equal(t, 0, req.GetInt("missing_val", 0))
+
+	// Test RequireInt
+	i, err := req.RequireInt("int_val")
+	assert.NoError(t, err)
+	assert.Equal(t, 42, i)
+	_, err = req.RequireInt("missing_val")
+	assert.Error(t, err)
+
+	// Test GetFloat
+	assert.Equal(t, 3.14, req.GetFloat("float_val", 0.0))
+	assert.Equal(t, 0.0, req.GetFloat("missing_val", 0.0))
+
+	// Test RequireFloat
+	f, err := req.RequireFloat("float_val")
+	assert.NoError(t, err)
+	assert.Equal(t, 3.14, f)
+	_, err = req.RequireFloat("missing_val")
+	assert.Error(t, err)
+
+	// Test GetBool
+	assert.Equal(t, true, req.GetBool("bool_val", false))
+	assert.Equal(t, false, req.GetBool("missing_val", false))
+
+	// Test RequireBool
+	b, err := req.RequireBool("bool_val")
+	assert.NoError(t, err)
+	assert.Equal(t, true, b)
+	_, err = req.RequireBool("missing_val")
+	assert.Error(t, err)
+
+	// Test GetStringSlice
+	assert.Equal(t, []string{"one", "two", "three"}, req.GetStringSlice("string_slice_val", nil))
+	assert.Equal(t, []string{"default"}, req.GetStringSlice("missing_val", []string{"default"}))
+
+	// Test RequireStringSlice
+	ss, err := req.RequireStringSlice("string_slice_val")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"one", "two", "three"}, ss)
+	_, err = req.RequireStringSlice("missing_val")
+	assert.Error(t, err)
 }
