@@ -1,6 +1,9 @@
 package transport
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,8 +112,18 @@ func TestValidateRedirectURI(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "Valid localhost URI with 127.0.0.1",
+			redirectURI: "http://127.0.0.1:8085/callback",
+			expectError: false,
+		},
+		{
 			name:        "Invalid HTTP URI (non-localhost)",
 			redirectURI: "http://example.com/callback",
+			expectError: true,
+		},
+		{
+			name:        "Invalid HTTP URI with 'local' in domain",
+			redirectURI: "http://localdomain.com/callback",
 			expectError: true,
 		},
 		{
@@ -122,6 +135,11 @@ func TestValidateRedirectURI(t *testing.T) {
 			name:        "Invalid scheme",
 			redirectURI: "ftp://example.com/callback",
 			expectError: true,
+		},
+		{
+			name:        "IPv6 localhost",
+			redirectURI: "http://[::1]:8080/callback",
+			expectError: false, // IPv6 localhost is valid
 		},
 	}
 
@@ -135,5 +153,67 @@ func TestValidateRedirectURI(t *testing.T) {
 				t.Errorf("Expected no error for redirect URI %s, got %v", tc.redirectURI, err)
 			}
 		})
+	}
+}
+
+func TestOAuthHandler_GetAuthorizationHeader_EmptyAccessToken(t *testing.T) {
+	// Create a token store with a token that has an empty access token
+	tokenStore := NewMemoryTokenStore()
+	invalidToken := &Token{
+		AccessToken:  "", // Empty access token
+		TokenType:    "Bearer",
+		RefreshToken: "refresh-token",
+		ExpiresIn:    3600,
+		ExpiresAt:    time.Now().Add(1 * time.Hour), // Valid for 1 hour
+	}
+	if err := tokenStore.SaveToken(invalidToken); err != nil {
+		t.Fatalf("Failed to save token: %v", err)
+	}
+
+	// Create an OAuth handler
+	config := OAuthConfig{
+		ClientID:     "test-client",
+		RedirectURI:  "http://localhost:8085/callback",
+		Scopes:       []string{"mcp.read", "mcp.write"},
+		TokenStore:   tokenStore,
+		PKCEEnabled:  true,
+	}
+
+	handler := NewOAuthHandler(config)
+
+	// Test getting authorization header with empty access token
+	_, err := handler.GetAuthorizationHeader(context.Background())
+	if err == nil {
+		t.Fatalf("Expected error when getting authorization header with empty access token")
+	}
+
+	// Verify the error message
+	if !errors.Is(err, ErrOAuthAuthorizationRequired) {
+		t.Errorf("Expected error to be ErrOAuthAuthorizationRequired, got %v", err)
+	}
+}
+
+func TestOAuthHandler_GetServerMetadata_EmptyURL(t *testing.T) {
+	// Create an OAuth handler with an empty AuthServerMetadataURL
+	config := OAuthConfig{
+		ClientID:              "test-client",
+		RedirectURI:           "http://localhost:8085/callback",
+		Scopes:                []string{"mcp.read"},
+		TokenStore:            NewMemoryTokenStore(),
+		AuthServerMetadataURL: "", // Empty URL
+		PKCEEnabled:           true,
+	}
+
+	handler := NewOAuthHandler(config)
+
+	// Test getting server metadata with empty URL
+	_, err := handler.GetServerMetadata(context.Background())
+	if err == nil {
+		t.Fatalf("Expected error when getting server metadata with empty URL")
+	}
+
+	// Verify the error message
+	if !strings.Contains(err.Error(), "AuthServerMetadataURL is required") {
+		t.Errorf("Expected error message to contain 'AuthServerMetadataURL is required', got %s", err.Error())
 	}
 }

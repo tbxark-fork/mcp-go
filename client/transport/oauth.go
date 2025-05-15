@@ -140,7 +140,7 @@ func (h *OAuthHandler) GetAuthorizationHeader(ctx context.Context) (string, erro
 // getValidToken returns a valid token, refreshing if necessary
 func (h *OAuthHandler) getValidToken(ctx context.Context) (*Token, error) {
 	token, err := h.config.TokenStore.GetToken()
-	if err == nil && !token.IsExpired() {
+	if err == nil && !token.IsExpired() && token.AccessToken != "" {
 		return token, nil
 	}
 
@@ -154,7 +154,7 @@ func (h *OAuthHandler) getValidToken(ctx context.Context) (*Token, error) {
 	}
 
 	// We need to get a new token through the authorization flow
-	return nil, errors.New("no valid token available, authorization required")
+	return nil, ErrOAuthAuthorizationRequired
 }
 
 // refreshToken refreshes an OAuth token
@@ -236,15 +236,9 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 		if h.config.AuthServerMetadataURL != "" {
 			metadataURL = h.config.AuthServerMetadataURL
 		} else {
-			// Construct the well-known URL from the base URL
-			// According to the spec, we need to discard any path component
-			baseURL, err := url.Parse(h.config.AuthServerMetadataURL)
-			if err != nil {
-				h.metadataFetchErr = fmt.Errorf("invalid base URL: %w", err)
-				return
-			}
-			baseURL.Path = ""
-			metadataURL = baseURL.String() + "/.well-known/oauth-authorization-server"
+			// If AuthServerMetadataURL is not provided, we can't discover the metadata
+			h.metadataFetchErr = fmt.Errorf("AuthServerMetadataURL is required but was not provided")
+			return
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 )
 
 // GenerateRandomString generates a random string of the specified length
@@ -42,15 +43,26 @@ func ValidateRedirectURI(redirectURI string) error {
 		return fmt.Errorf("redirect URI cannot be empty")
 	}
 
+	// Parse the URL
+	parsedURL, err := url.Parse(redirectURI)
+	if err != nil {
+		return fmt.Errorf("invalid redirect URI: %w", err)
+	}
+
 	// Check if it's a localhost URL
-	if len(redirectURI) >= 9 && redirectURI[:9] == "http://lo" {
-		return nil
+	if parsedURL.Scheme == "http" {
+		hostname := parsedURL.Hostname()
+		// Check for various forms of localhost
+		if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" || hostname == "[::1]" {
+			return nil
+		}
+		return fmt.Errorf("HTTP redirect URI must use localhost or 127.0.0.1")
 	}
 
 	// Check if it's an HTTPS URL
-	if len(redirectURI) >= 8 && redirectURI[:8] == "https://" {
+	if parsedURL.Scheme == "https" {
 		return nil
 	}
 
-	return fmt.Errorf("redirect URI must be either a localhost URL or an HTTPS URL")
+	return fmt.Errorf("redirect URI must use either HTTP with localhost or HTTPS")
 }

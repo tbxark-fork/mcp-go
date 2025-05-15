@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -141,13 +142,20 @@ const (
 	headerKeySessionID = "Mcp-Session-Id"
 )
 
+// ErrOAuthAuthorizationRequired is a sentinel error for OAuth authorization required
+var ErrOAuthAuthorizationRequired = errors.New("no valid token available, authorization required")
+
 // OAuthAuthorizationRequiredError is returned when OAuth authorization is required
 type OAuthAuthorizationRequiredError struct {
 	Handler *OAuthHandler
 }
 
 func (e *OAuthAuthorizationRequiredError) Error() string {
-	return "OAuth authorization required"
+	return ErrOAuthAuthorizationRequired.Error()
+}
+
+func (e *OAuthAuthorizationRequiredError) Unwrap() error {
+	return ErrOAuthAuthorizationRequired
 }
 
 // SendRequest sends a JSON-RPC request to the server and waits for a response.
@@ -410,7 +418,7 @@ func (c *StreamableHTTP) SendNotification(ctx context.Context, notification mcp.
 		authHeader, err := c.oauthHandler.GetAuthorizationHeader(ctx)
 		if err != nil {
 			// If we get an authorization error, return a specific error that can be handled by the client
-			if err.Error() == "no valid token available, authorization required" {
+			if errors.Is(err, ErrOAuthAuthorizationRequired) {
 				return &OAuthAuthorizationRequiredError{
 					Handler: c.oauthHandler,
 				}

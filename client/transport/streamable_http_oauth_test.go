@@ -10,18 +10,33 @@ import (
 )
 
 func TestStreamableHTTP_WithOAuth(t *testing.T) {
+	// Track request count to simulate 401 on first request, then success
+	requestCount := 0
+	authHeaderReceived := ""
+
 	// Create a test server that requires OAuth
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture the Authorization header
+		authHeaderReceived = r.Header.Get("Authorization")
+
 		// Check for Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "Bearer test-token" {
+		if requestCount == 0 {
+			// First request - simulate 401 to test error handling
+			requestCount++
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		// Subsequent requests - verify the Authorization header
+		if authHeaderReceived != "Bearer test-token" {
+			t.Errorf("Expected Authorization header 'Bearer test-token', got '%s'", authHeaderReceived)
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
 		// Return a successful response
-		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(map[string]any{
 			"jsonrpc": "2.0",
 			"id":      1,
@@ -68,6 +83,59 @@ func TestStreamableHTTP_WithOAuth(t *testing.T) {
 	// Verify the OAuth handler is set
 	if transport.GetOAuthHandler() == nil {
 		t.Errorf("Expected GetOAuthHandler() to return a handler")
+	}
+
+	// First request should fail with OAuthAuthorizationRequiredError
+	_, err = transport.SendRequest(context.Background(), JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "test",
+	})
+	
+	// Verify the error is an OAuthAuthorizationRequiredError
+	if err == nil {
+		t.Fatalf("Expected error on first request, got nil")
+	}
+	
+	oauthErr, ok := err.(*OAuthAuthorizationRequiredError)
+	if !ok {
+		t.Fatalf("Expected OAuthAuthorizationRequiredError, got %T: %v", err, err)
+	}
+	
+	// Verify the error has the handler
+	if oauthErr.Handler == nil {
+		t.Errorf("Expected OAuthAuthorizationRequiredError to have a handler")
+	}
+	
+	// Verify the server received the first request
+	if requestCount != 1 {
+		t.Errorf("Expected server to receive 1 request, got %d", requestCount)
+	}
+	
+	// Second request should succeed
+	response, err := transport.SendRequest(context.Background(), JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      2,
+		Method:  "test",
+	})
+	
+	if err != nil {
+		t.Fatalf("Failed to send second request: %v", err)
+	}
+	
+	// Verify the response
+	var resultStr string
+	if err := json.Unmarshal(response.Result, &resultStr); err != nil {
+		t.Fatalf("Failed to unmarshal result: %v", err)
+	}
+	
+	if resultStr != "success" {
+		t.Errorf("Expected result to be 'success', got %v", resultStr)
+	}
+	
+	// Verify the server received the Authorization header
+	if authHeaderReceived != "Bearer test-token" {
+		t.Errorf("Expected server to receive Authorization header 'Bearer test-token', got '%s'", authHeaderReceived)
 	}
 }
 
