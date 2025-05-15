@@ -178,7 +178,7 @@ func startCallbackServer(callbackChan chan<- map[string]string) *http.Server {
 
 		// Respond to the user
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`
+		_, err := w.Write([]byte(`
 			<html>
 				<body>
 					<h1>Authorization Successful</h1>
@@ -187,6 +187,9 @@ func startCallbackServer(callbackChan chan<- map[string]string) *http.Server {
 				</body>
 			</html>
 		`))
+		if err != nil {
+			log.Printf("Error writing response: %v", err)
+		}
 	})
 
 	go func() {

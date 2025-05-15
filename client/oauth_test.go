@@ -25,7 +25,7 @@ func TestNewOAuthStreamableHttpClient(t *testing.T) {
 		// Return a successful response
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"jsonrpc": "2.0",
 			"id":      1,
 			"result": map[string]any{
@@ -36,7 +36,9 @@ func TestNewOAuthStreamableHttpClient(t *testing.T) {
 				},
 				"capabilities": map[string]any{},
 			},
-		})
+		}); err != nil {
+			t.Errorf("Failed to encode JSON response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -49,7 +51,9 @@ func TestNewOAuthStreamableHttpClient(t *testing.T) {
 		ExpiresIn:    3600,
 		ExpiresAt:    time.Now().Add(1 * time.Hour), // Valid for 1 hour
 	}
-	tokenStore.SaveToken(validToken)
+	if err := tokenStore.SaveToken(validToken); err != nil {
+		t.Fatalf("Failed to save token: %v", err)
+	}
 
 	// Create OAuth config
 	oauthConfig := OAuthConfig{
