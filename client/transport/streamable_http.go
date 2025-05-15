@@ -33,6 +33,13 @@ func WithHTTPTimeout(timeout time.Duration) StreamableHTTPCOption {
 	}
 }
 
+// WithOAuth enables OAuth authentication for the client.
+func WithOAuth(config OAuthConfig) StreamableHTTPCOption {
+	return func(sc *StreamableHTTP) {
+		sc.oauthHandler = NewOAuthHandler(config)
+	}
+}
+
 // StreamableHTTP implements Streamable HTTP transport.
 //
 // It transmits JSON-RPC messages over individual HTTP requests. One message per request.
@@ -59,6 +66,9 @@ type StreamableHTTP struct {
 	notifyMu            sync.RWMutex
 
 	closed chan struct{}
+	
+	// OAuth support
+	oauthHandler *OAuthHandler
 }
 
 // NewStreamableHTTP creates a new Streamable HTTP transport with the given base URL.
@@ -131,6 +141,15 @@ const (
 	headerKeySessionID = "Mcp-Session-Id"
 )
 
+// OAuthAuthorizationRequiredError is returned when OAuth authorization is required
+type OAuthAuthorizationRequiredError struct {
+	Handler *OAuthHandler
+}
+
+func (e *OAuthAuthorizationRequiredError) Error() string {
+	return "OAuth authorization required"
+}
+
 // SendRequest sends a JSON-RPC request to the server and waits for a response.
 // Returns the raw JSON response message or an error if the request fails.
 func (c *StreamableHTTP) SendRequest(
@@ -173,6 +192,21 @@ func (c *StreamableHTTP) SendRequest(
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
+	
+	// Add OAuth authorization if configured
+	if c.oauthHandler != nil {
+		authHeader, err := c.oauthHandler.GetAuthorizationHeader(ctx)
+		if err != nil {
+			// If we get an authorization error, return a specific error that can be handled by the client
+			if err.Error() == "no valid token available, authorization required" {
+				return nil, &OAuthAuthorizationRequiredError{
+					Handler: c.oauthHandler,
+				}
+			}
+			return nil, fmt.Errorf("failed to get authorization header: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
+	}
 
 	// Send request
 	resp, err := c.httpClient.Do(req)
@@ -187,6 +221,13 @@ func (c *StreamableHTTP) SendRequest(
 		if resp.StatusCode == http.StatusNotFound {
 			c.sessionID.CompareAndSwap(sessionID, "")
 			return nil, fmt.Errorf("session terminated (404). need to re-initialize")
+		}
+		
+		// Handle OAuth unauthorized error
+		if resp.StatusCode == http.StatusUnauthorized && c.oauthHandler != nil {
+			return nil, &OAuthAuthorizationRequiredError{
+				Handler: c.oauthHandler,
+			}
 		}
 
 		// handle error response
@@ -363,6 +404,21 @@ func (c *StreamableHTTP) SendNotification(ctx context.Context, notification mcp.
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
+	
+	// Add OAuth authorization if configured
+	if c.oauthHandler != nil {
+		authHeader, err := c.oauthHandler.GetAuthorizationHeader(ctx)
+		if err != nil {
+			// If we get an authorization error, return a specific error that can be handled by the client
+			if err.Error() == "no valid token available, authorization required" {
+				return &OAuthAuthorizationRequiredError{
+					Handler: c.oauthHandler,
+				}
+			}
+			return fmt.Errorf("failed to get authorization header: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
+	}
 
 	// Send request
 	resp, err := c.httpClient.Do(req)
@@ -372,6 +428,13 @@ func (c *StreamableHTTP) SendNotification(ctx context.Context, notification mcp.
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		// Handle OAuth unauthorized error
+		if resp.StatusCode == http.StatusUnauthorized && c.oauthHandler != nil {
+			return &OAuthAuthorizationRequiredError{
+				Handler: c.oauthHandler,
+			}
+		}
+		
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf(
 			"notification failed with status %d: %s",
@@ -391,4 +454,14 @@ func (c *StreamableHTTP) SetNotificationHandler(handler func(mcp.JSONRPCNotifica
 
 func (c *StreamableHTTP) GetSessionId() string {
 	return c.sessionID.Load().(string)
+}
+
+// GetOAuthHandler returns the OAuth handler if configured
+func (c *StreamableHTTP) GetOAuthHandler() *OAuthHandler {
+	return c.oauthHandler
+}
+
+// IsOAuthEnabled returns true if OAuth is enabled
+func (c *StreamableHTTP) IsOAuthEnabled() bool {
+	return c.oauthHandler != nil
 }
