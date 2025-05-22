@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/client/transport"

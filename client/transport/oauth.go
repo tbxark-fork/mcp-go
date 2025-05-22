@@ -207,13 +207,12 @@ func (h *OAuthHandler) refreshToken(ctx context.Context, refreshToken string) (*
 	}
 
 	// If no new refresh token is provided, keep the old one
-	if tokenResp.RefreshToken == "" && token != nil {
-		tokenResp.RefreshToken = token.RefreshToken
+	oldToken, _ := h.config.TokenStore.GetToken()
+	if tokenResp.RefreshToken == "" && oldToken != nil {
+		tokenResp.RefreshToken = oldToken.RefreshToken
 	}
 
 	// Save the token
-	if err := h.config.TokenStore.SaveToken(&tokenResp); err != nil {
-		…
 	if err := h.config.TokenStore.SaveToken(&tokenResp); err != nil {
 		return nil, fmt.Errorf("failed to save token: %w", err)
 	}

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestStreamableHTTP_WithOAuth(t *testing.T) {
@@ -88,7 +90,7 @@ func TestStreamableHTTP_WithOAuth(t *testing.T) {
 	// First request should fail with OAuthAuthorizationRequiredError
 	_, err = transport.SendRequest(context.Background(), JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      mcp.NewRequestId(1),
 		Method:  "test",
 	})
 	
@@ -115,7 +117,7 @@ func TestStreamableHTTP_WithOAuth(t *testing.T) {
 	// Second request should succeed
 	response, err := transport.SendRequest(context.Background(), JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      2,
+		ID:      mcp.NewRequestId(2),
 		Method:  "test",
 	})
 	
@@ -168,7 +170,7 @@ func TestStreamableHTTP_WithOAuth_Unauthorized(t *testing.T) {
 	// Send a request
 	_, err = transport.SendRequest(context.Background(), JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      mcp.NewRequestId(1),
 		Method:  "test",
 	})
 
