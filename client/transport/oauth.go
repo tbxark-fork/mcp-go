@@ -291,7 +291,12 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 
 		// If we can't get the protected resource metadata, fall back to default endpoints
 		if resp.StatusCode != http.StatusOK {
-			h.serverMetadata = h.getDefaultEndpoints(baseURL)
+			metadata, err := h.getDefaultEndpoints(baseURL)
+			if err != nil {
+				h.metadataFetchErr = fmt.Errorf("failed to get default endpoints: %w", err)
+				return
+			}
+			h.serverMetadata = metadata
 			return
 		}
 
@@ -304,7 +309,12 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 
 		// If no authorization servers are specified, fall back to default endpoints
 		if len(protectedResource.AuthorizationServers) == 0 {
-			h.serverMetadata = h.getDefaultEndpoints(baseURL)
+			metadata, err := h.getDefaultEndpoints(baseURL)
+			if err != nil {
+				h.metadataFetchErr = fmt.Errorf("failed to get default endpoints: %w", err)
+				return
+			}
+			h.serverMetadata = metadata
 			return
 		}
 
@@ -324,7 +334,12 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 		}
 
 		// If both discovery methods fail, use default endpoints based on the authorization server URL
-		h.serverMetadata = h.getDefaultEndpoints(authServerURL)
+		metadata, err := h.getDefaultEndpoints(authServerURL)
+		if err != nil {
+			h.metadataFetchErr = fmt.Errorf("failed to get default endpoints: %w", err)
+			return
+		}
+		h.serverMetadata = metadata
 	})
 
 	if h.metadataFetchErr != nil {
@@ -395,23 +410,28 @@ func (h *OAuthHandler) GetServerMetadata(ctx context.Context) (*AuthServerMetada
 }
 
 // getDefaultEndpoints returns default OAuth endpoints based on the base URL
-func (h *OAuthHandler) getDefaultEndpoints(baseURL string) *AuthServerMetadata {
+func (h *OAuthHandler) getDefaultEndpoints(baseURL string) (*AuthServerMetadata, error) {
 	// Parse the base URL to extract the authority
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to parse base URL: %w", err)
 	}
 
 	// Discard any path component to get the authorization base URL
 	parsedURL.Path = ""
 	authBaseURL := parsedURL.String()
+	
+	// Validate that the URL has a scheme and host
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return nil, fmt.Errorf("invalid base URL: missing scheme or host in %q", baseURL)
+	}
 
 	return &AuthServerMetadata{
 		Issuer:                authBaseURL,
 		AuthorizationEndpoint: authBaseURL + "/authorize",
 		TokenEndpoint:         authBaseURL + "/token",
 		RegistrationEndpoint:  authBaseURL + "/register",
-	}
+	}, nil
 }
 
 // RegisterClient performs dynamic client registration
