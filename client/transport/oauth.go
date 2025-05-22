@@ -115,6 +115,7 @@ type OAuthHandler struct {
 	metadataFetchErr error
 	metadataOnce     sync.Once
 	baseURL          string
+	expectedState    string // Expected state value for CSRF protection
 }
 
 // NewOAuthHandler creates a new OAuth handler
@@ -239,6 +240,11 @@ func (h *OAuthHandler) GetClientSecret() string {
 // SetBaseURL sets the base URL for the API server
 func (h *OAuthHandler) SetBaseURL(baseURL string) {
 	h.baseURL = baseURL
+}
+
+// GetExpectedState returns the expected state value (for testing purposes)
+func (h *OAuthHandler) GetExpectedState() string {
+	return h.expectedState
 }
 
 // OAuthProtectedResource represents the response from /.well-known/oauth-protected-resource
@@ -481,8 +487,25 @@ func (h *OAuthHandler) RegisterClient(ctx context.Context, clientName string) er
 	return nil
 }
 
+// ErrInvalidState is returned when the state parameter doesn't match the expected value
+var ErrInvalidState = errors.New("invalid state parameter, possible CSRF attack")
+
 // ProcessAuthorizationResponse processes the authorization response and exchanges the code for a token
 func (h *OAuthHandler) ProcessAuthorizationResponse(ctx context.Context, code, state, codeVerifier string) error {
+	// Validate the state parameter to prevent CSRF attacks
+	if h.expectedState == "" {
+		return errors.New("no expected state found, authorization flow may not have been initiated properly")
+	}
+	
+	if state != h.expectedState {
+		return ErrInvalidState
+	}
+	
+	// Clear the expected state after validation
+	defer func() {
+		h.expectedState = ""
+	}()
+	
 	metadata, err := h.getServerMetadata(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get server metadata: %w", err)
@@ -550,6 +573,9 @@ func (h *OAuthHandler) GetAuthorizationURL(ctx context.Context, state, codeChall
 	if err != nil {
 		return "", fmt.Errorf("failed to get server metadata: %w", err)
 	}
+
+	// Store the state for later validation
+	h.expectedState = state
 
 	params := url.Values{}
 	params.Set("response_type", "code")

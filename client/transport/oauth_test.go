@@ -219,3 +219,45 @@ func TestOAuthHandler_GetServerMetadata_EmptyURL(t *testing.T) {
 		t.Errorf("Expected error message to contain connection error, got %s", err.Error())
 	}
 }
+
+func TestOAuthHandler_ProcessAuthorizationResponse_StateValidation(t *testing.T) {
+	// Create an OAuth handler
+	config := OAuthConfig{
+		ClientID:              "test-client",
+		RedirectURI:           "http://localhost:8085/callback",
+		Scopes:                []string{"mcp.read", "mcp.write"},
+		TokenStore:            NewMemoryTokenStore(),
+		AuthServerMetadataURL: "http://example.com/.well-known/oauth-authorization-server",
+		PKCEEnabled:           true,
+	}
+
+	handler := NewOAuthHandler(config)
+	
+	// Mock the server metadata to avoid nil pointer dereference
+	handler.serverMetadata = &AuthServerMetadata{
+		Issuer:                "http://example.com",
+		AuthorizationEndpoint: "http://example.com/authorize",
+		TokenEndpoint:         "http://example.com/token",
+	}
+	
+	// Set the expected state
+	expectedState := "test-state-123"
+	handler.expectedState = expectedState
+	
+	// Test with non-matching state - this should fail immediately with ErrInvalidState
+	// before trying to connect to any server
+	err := handler.ProcessAuthorizationResponse(context.Background(), "test-code", "wrong-state", "test-code-verifier")
+	if !errors.Is(err, ErrInvalidState) {
+		t.Errorf("Expected ErrInvalidState, got %v", err)
+	}
+	
+	// Test with empty expected state
+	handler.expectedState = ""
+	err = handler.ProcessAuthorizationResponse(context.Background(), "test-code", expectedState, "test-code-verifier")
+	if err == nil {
+		t.Errorf("Expected error with empty expected state, got nil")
+	}
+	if errors.Is(err, ErrInvalidState) {
+		t.Errorf("Got ErrInvalidState when expected a different error for empty expected state")
+	}
+}
