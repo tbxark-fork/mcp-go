@@ -48,8 +48,8 @@ type OAuthAuthorizationRequiredError = transport.OAuthAuthorizationRequiredError
 
 // IsOAuthAuthorizationRequiredError checks if an error is an OAuthAuthorizationRequiredError
 func IsOAuthAuthorizationRequiredError(err error) bool {
-	_, ok := err.(*OAuthAuthorizationRequiredError)
-	return ok
+    var target *OAuthAuthorizationRequiredError
+    return errors.As(err, &target)
 }
 
 // GetOAuthHandler extracts the OAuthHandler from an OAuthAuthorizationRequiredError
