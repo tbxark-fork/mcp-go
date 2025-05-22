@@ -114,6 +114,7 @@ type OAuthHandler struct {
 	serverMetadata   *AuthServerMetadata
 	metadataFetchErr error
 	metadataOnce     sync.Once
+	baseURL          string
 }
 
 // NewOAuthHandler creates a new OAuth handler
@@ -235,21 +236,40 @@ func (h *OAuthHandler) GetClientSecret() string {
 	return h.config.ClientSecret
 }
 
+// SetBaseURL sets the base URL for the API server
+func (h *OAuthHandler) SetBaseURL(baseURL string) {
+	h.baseURL = baseURL
+}
+
+// OAuthProtectedResource represents the response from /.well-known/oauth-protected-resource
+type OAuthProtectedResource struct {
+	AuthorizationServers []string `json:"authorization_servers"`
+	Resource             string   `json:"resource"`
+	ResourceName         string   `json:"resource_name,omitempty"`
+}
+
 // getServerMetadata fetches the OAuth server metadata
 func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetadata, error) {
 	h.metadataOnce.Do(func() {
-		var metadataURL string
+		// If AuthServerMetadataURL is explicitly provided, use it directly
 		if h.config.AuthServerMetadataURL != "" {
-			metadataURL = h.config.AuthServerMetadataURL
-		} else {
-			// If AuthServerMetadataURL is not provided, we can't discover the metadata
-			h.metadataFetchErr = fmt.Errorf("AuthServerMetadataURL is required but was not provided")
+			h.fetchMetadataFromURL(ctx, h.config.AuthServerMetadataURL)
 			return
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
+		// Try to discover the authorization server via OAuth Protected Resource
+		// as per RFC 9728 (https://datatracker.ietf.org/doc/html/rfc9728)
+		baseURL, err := h.extractBaseURL()
 		if err != nil {
-			h.metadataFetchErr = fmt.Errorf("failed to create metadata request: %w", err)
+			h.metadataFetchErr = fmt.Errorf("failed to extract base URL: %w", err)
+			return
+		}
+
+		// Try to fetch the OAuth Protected Resource metadata
+		protectedResourceURL := baseURL + "/.well-known/oauth-protected-resource"
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, protectedResourceURL, nil)
+		if err != nil {
+			h.metadataFetchErr = fmt.Errorf("failed to create protected resource request: %w", err)
 			return
 		}
 
@@ -258,24 +278,47 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 
 		resp, err := h.httpClient.Do(req)
 		if err != nil {
-			h.metadataFetchErr = fmt.Errorf("failed to send metadata request: %w", err)
+			h.metadataFetchErr = fmt.Errorf("failed to send protected resource request: %w", err)
 			return
 		}
 		defer resp.Body.Close()
 
+		// If we can't get the protected resource metadata, fall back to default endpoints
 		if resp.StatusCode != http.StatusOK {
-			// If metadata discovery fails, use default endpoints
-			h.serverMetadata = h.getDefaultEndpoints(metadataURL)
+			h.serverMetadata = h.getDefaultEndpoints(baseURL)
 			return
 		}
 
-		var metadata AuthServerMetadata
-		if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
-			h.metadataFetchErr = fmt.Errorf("failed to decode metadata response: %w", err)
+		// Parse the protected resource metadata
+		var protectedResource OAuthProtectedResource
+		if err := json.NewDecoder(resp.Body).Decode(&protectedResource); err != nil {
+			h.metadataFetchErr = fmt.Errorf("failed to decode protected resource response: %w", err)
 			return
 		}
 
-		h.serverMetadata = &metadata
+		// If no authorization servers are specified, fall back to default endpoints
+		if len(protectedResource.AuthorizationServers) == 0 {
+			h.serverMetadata = h.getDefaultEndpoints(baseURL)
+			return
+		}
+
+		// Use the first authorization server
+		authServerURL := protectedResource.AuthorizationServers[0]
+
+		// Try OpenID Connect discovery first
+		h.fetchMetadataFromURL(ctx, authServerURL+"/.well-known/openid-configuration")
+		if h.serverMetadata != nil {
+			return
+		}
+
+		// If OpenID Connect discovery fails, try OAuth Authorization Server Metadata
+		h.fetchMetadataFromURL(ctx, authServerURL+"/.well-known/oauth-authorization-server")
+		if h.serverMetadata != nil {
+			return
+		}
+
+		// If both discovery methods fail, use default endpoints based on the authorization server URL
+		h.serverMetadata = h.getDefaultEndpoints(authServerURL)
 	})
 
 	if h.metadataFetchErr != nil {
@@ -283,6 +326,61 @@ func (h *OAuthHandler) getServerMetadata(ctx context.Context) (*AuthServerMetada
 	}
 
 	return h.serverMetadata, nil
+}
+
+// fetchMetadataFromURL fetches and parses OAuth server metadata from a URL
+func (h *OAuthHandler) fetchMetadataFromURL(ctx context.Context, metadataURL string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
+	if err != nil {
+		h.metadataFetchErr = fmt.Errorf("failed to create metadata request: %w", err)
+		return
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("MCP-Protocol-Version", "2025-03-26")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.metadataFetchErr = fmt.Errorf("failed to send metadata request: %w", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// If metadata discovery fails, don't set any metadata
+		return
+	}
+
+	var metadata AuthServerMetadata
+	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+		h.metadataFetchErr = fmt.Errorf("failed to decode metadata response: %w", err)
+		return
+	}
+
+	h.serverMetadata = &metadata
+}
+
+// extractBaseURL extracts the base URL from the first request
+func (h *OAuthHandler) extractBaseURL() (string, error) {
+	// If we have a base URL from a previous request, use it
+	if h.baseURL != "" {
+		return h.baseURL, nil
+	}
+
+	// Otherwise, we need to infer it from the redirect URI
+	if h.config.RedirectURI == "" {
+		return "", fmt.Errorf("no base URL available and no redirect URI provided")
+	}
+
+	// Parse the redirect URI to extract the authority
+	parsedURL, err := url.Parse(h.config.RedirectURI)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse redirect URI: %w", err)
+	}
+
+	// Use the scheme and host from the redirect URI
+	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+	return baseURL, nil
 }
 
 // GetServerMetadata is a public wrapper for getServerMetadata

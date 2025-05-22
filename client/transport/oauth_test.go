@@ -212,8 +212,10 @@ func TestOAuthHandler_GetServerMetadata_EmptyURL(t *testing.T) {
 		t.Fatalf("Expected error when getting server metadata with empty URL")
 	}
 
-	// Verify the error message
-	if !strings.Contains(err.Error(), "AuthServerMetadataURL is required") {
-		t.Errorf("Expected error message to contain 'AuthServerMetadataURL is required', got %s", err.Error())
+	// Verify the error message contains something about a connection error
+	// since we're now trying to connect to the well-known endpoint
+	if !strings.Contains(err.Error(), "connection refused") && 
+	   !strings.Contains(err.Error(), "failed to send protected resource request") {
+		t.Errorf("Expected error message to contain connection error, got %s", err.Error())
 	}
 }
