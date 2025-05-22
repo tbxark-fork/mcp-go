@@ -27,6 +27,12 @@ func WithHTTPHeaders(headers map[string]string) StreamableHTTPCOption {
 	}
 }
 
+func WithHTTPHeaderFunc(headerFunc HTTPHeaderFunc) StreamableHTTPCOption {
+	return func(sc *StreamableHTTP) {
+		sc.headerFunc = headerFunc
+	}
+}
+
 // WithHTTPTimeout sets the timeout for a HTTP request and stream.
 func WithHTTPTimeout(timeout time.Duration) StreamableHTTPCOption {
 	return func(sc *StreamableHTTP) {
@@ -60,6 +66,7 @@ type StreamableHTTP struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	headers    map[string]string
+	headerFunc HTTPHeaderFunc
 
 	sessionID atomic.Value // string
 
@@ -138,7 +145,6 @@ func (c *StreamableHTTP) Close() error {
 }
 
 const (
-	initializeMethod   = "initialize"
 	headerKeySessionID = "Mcp-Session-Id"
 )
 
@@ -200,7 +206,7 @@ func (c *StreamableHTTP) SendRequest(
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
-	
+  
 	// Add OAuth authorization if configured
 	if c.oauthHandler != nil {
 		authHeader, err := c.oauthHandler.GetAuthorizationHeader(ctx)
@@ -214,6 +220,12 @@ func (c *StreamableHTTP) SendRequest(
 			return nil, fmt.Errorf("failed to get authorization header: %w", err)
 		}
 		req.Header.Set("Authorization", authHeader)
+  }
+  
+	if c.headerFunc != nil {
+		for k, v := range c.headerFunc(ctx) {
+			req.Header.Set(k, v)
+		}
 	}
 
 	// Send request
@@ -247,7 +259,7 @@ func (c *StreamableHTTP) SendRequest(
 		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, body)
 	}
 
-	if request.Method == initializeMethod {
+	if request.Method == string(mcp.MethodInitialize) {
 		// saved the received session ID in the response
 		// empty session ID is allowed
 		if sessionID := resp.Header.Get(headerKeySessionID); sessionID != "" {
@@ -266,7 +278,7 @@ func (c *StreamableHTTP) SendRequest(
 		}
 
 		// should not be a notification
-		if response.ID == nil {
+		if response.ID.IsNil() {
 			return nil, fmt.Errorf("response should contain RPC id: %v", response)
 		}
 
@@ -307,7 +319,7 @@ func (c *StreamableHTTP) handleSSEResponse(ctx context.Context, reader io.ReadCl
 			}
 
 			// Handle notification
-			if message.ID == nil {
+			if message.ID.IsNil() {
 				var notification mcp.JSONRPCNotification
 				if err := json.Unmarshal([]byte(data), &notification); err != nil {
 					fmt.Printf("failed to unmarshal notification: %v\n", err)
@@ -426,6 +438,12 @@ func (c *StreamableHTTP) SendNotification(ctx context.Context, notification mcp.
 			return fmt.Errorf("failed to get authorization header: %w", err)
 		}
 		req.Header.Set("Authorization", authHeader)
+  }
+   
+	if c.headerFunc != nil {
+		for k, v := range c.headerFunc(ctx) {
+			req.Header.Set(k, v)
+		}
 	}
 
 	// Send request
