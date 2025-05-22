@@ -220,6 +220,45 @@ func TestOAuthHandler_GetServerMetadata_EmptyURL(t *testing.T) {
 	}
 }
 
+func TestOAuthError(t *testing.T) {
+	testCases := []struct {
+		name        string
+		errorCode   string
+		description string
+		uri         string
+		expected    string
+	}{
+		{
+			name:        "Error with description",
+			errorCode:   "invalid_request",
+			description: "The request is missing a required parameter",
+			uri:         "https://example.com/errors/invalid_request",
+			expected:    "OAuth error: invalid_request - The request is missing a required parameter",
+		},
+		{
+			name:        "Error without description",
+			errorCode:   "unauthorized_client",
+			description: "",
+			uri:         "",
+			expected:    "OAuth error: unauthorized_client",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oauthErr := OAuthError{
+				ErrorCode:        tc.errorCode,
+				ErrorDescription: tc.description,
+				ErrorURI:         tc.uri,
+			}
+			
+			if oauthErr.Error() != tc.expected {
+				t.Errorf("Expected error message %q, got %q", tc.expected, oauthErr.Error())
+			}
+		})
+	}
+}
+
 func TestOAuthHandler_ProcessAuthorizationResponse_StateValidation(t *testing.T) {
 	// Create an OAuth handler
 	config := OAuthConfig{

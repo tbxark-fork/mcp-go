@@ -195,7 +195,7 @@ func (h *OAuthHandler) refreshToken(ctx context.Context, refreshToken string) (*
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("refresh token request failed with status %d: %s", resp.StatusCode, body)
+		return nil, extractOAuthError(body, resp.StatusCode, "refresh token request failed")
 	}
 
 	var tokenResp Token
@@ -232,6 +232,18 @@ func (h *OAuthHandler) GetClientID() string {
 	return h.config.ClientID
 }
 
+// extractOAuthError attempts to parse an OAuth error response from the response body
+func extractOAuthError(body []byte, statusCode int, context string) error {
+	// Try to parse the error as an OAuth error response
+	var oauthErr OAuthError
+	if err := json.Unmarshal(body, &oauthErr); err == nil && oauthErr.ErrorCode != "" {
+		return fmt.Errorf("%s: %w", context, oauthErr)
+	}
+	
+	// If not a valid OAuth error, return the raw response
+	return fmt.Errorf("%s with status %d: %s", context, statusCode, body)
+}
+
 // GetClientSecret returns the client secret
 func (h *OAuthHandler) GetClientSecret() string {
 	return h.config.ClientSecret
@@ -245,6 +257,21 @@ func (h *OAuthHandler) SetBaseURL(baseURL string) {
 // GetExpectedState returns the expected state value (for testing purposes)
 func (h *OAuthHandler) GetExpectedState() string {
 	return h.expectedState
+}
+
+// OAuthError represents a standard OAuth 2.0 error response
+type OAuthError struct {
+	ErrorCode        string `json:"error"`
+	ErrorDescription string `json:"error_description,omitempty"`
+	ErrorURI         string `json:"error_uri,omitempty"`
+}
+
+// Error implements the error interface
+func (e OAuthError) Error() string {
+	if e.ErrorDescription != "" {
+		return fmt.Sprintf("OAuth error: %s - %s", e.ErrorCode, e.ErrorDescription)
+	}
+	return fmt.Sprintf("OAuth error: %s", e.ErrorCode)
 }
 
 // OAuthProtectedResource represents the response from /.well-known/oauth-protected-resource
@@ -486,7 +513,7 @@ func (h *OAuthHandler) RegisterClient(ctx context.Context, clientName string) er
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("registration request failed with status %d: %s", resp.StatusCode, body)
+		return extractOAuthError(body, resp.StatusCode, "registration request failed")
 	}
 
 	var regResponse struct {
@@ -566,7 +593,7 @@ func (h *OAuthHandler) ProcessAuthorizationResponse(ctx context.Context, code, s
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, body)
+		return extractOAuthError(body, resp.StatusCode, "token request failed")
 	}
 
 	var tokenResp Token
