@@ -2,6 +2,8 @@ import { defineConfig } from 'vocs'
 
 export default defineConfig({
   title: 'MCP-Go',
+  baseUrl: 'https://mark3labs.github.io',
+  basePath: '/mcp-go',
   logoUrl: '/logo.png',
   description: 'A Go implementation of the Model Context Protocol (MCP), enabling seamless integration between LLM applications and external data sources and tools.',
   sidebar: [
