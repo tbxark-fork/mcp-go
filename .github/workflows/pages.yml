@@ -18,9 +18,11 @@ jobs:
           bun-version: latest  # or specify a version like '1.0.0'
 
       - name: Install Dependencies
+        working-directory: ./www
         run: bun install
 
       - name: Build
+        working-directory: ./www
         run: bun run build
 
       - name: Deploy to GitHub Pages
