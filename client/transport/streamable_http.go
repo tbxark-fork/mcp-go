@@ -99,6 +99,11 @@ func NewStreamableHTTP(baseURL string, options ...StreamableHTTPCOption) (*Strea
 		opt(smc)
 	}
 
+	// If OAuth is configured, set the base URL for metadata discovery
+	if smc.oauthHandler != nil {
+		smc.oauthHandler.SetBaseURL(baseURL)
+	}
+
 	return smc, nil
 }
 
