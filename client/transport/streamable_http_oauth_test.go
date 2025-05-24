@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -99,8 +100,8 @@ func TestStreamableHTTP_WithOAuth(t *testing.T) {
 		t.Fatalf("Expected error on first request, got nil")
 	}
 	
-	oauthErr, ok := err.(*OAuthAuthorizationRequiredError)
-	if !ok {
+	var oauthErr *OAuthAuthorizationRequiredError
+	if !errors.As(err, &oauthErr) {
 		t.Fatalf("Expected OAuthAuthorizationRequiredError, got %T: %v", err, err)
 	}
 	
@@ -179,8 +180,8 @@ func TestStreamableHTTP_WithOAuth_Unauthorized(t *testing.T) {
 		t.Fatalf("Expected error, got nil")
 	}
 
-	oauthErr, ok := err.(*OAuthAuthorizationRequiredError)
-	if !ok {
+	var oauthErr *OAuthAuthorizationRequiredError
+	if !errors.As(err, &oauthErr) {
 		t.Fatalf("Expected OAuthAuthorizationRequiredError, got %T: %v", err, err)
 	}
 
