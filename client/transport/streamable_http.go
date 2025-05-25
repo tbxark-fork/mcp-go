@@ -63,7 +63,7 @@ func WithOAuth(config OAuthConfig) StreamableHTTPCOption {
 //     (https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#resumability-and-redelivery)
 //   - server -> client request
 type StreamableHTTP struct {
-	baseURL    *url.URL
+	serverURL  *url.URL
 	httpClient *http.Client
 	headers    map[string]string
 	headerFunc HTTPHeaderFunc
@@ -79,16 +79,16 @@ type StreamableHTTP struct {
 	oauthHandler *OAuthHandler
 }
 
-// NewStreamableHTTP creates a new Streamable HTTP transport with the given base URL.
+// NewStreamableHTTP creates a new Streamable HTTP transport with the given server URL.
 // Returns an error if the URL is invalid.
-func NewStreamableHTTP(baseURL string, options ...StreamableHTTPCOption) (*StreamableHTTP, error) {
-	parsedURL, err := url.Parse(baseURL)
+func NewStreamableHTTP(serverURL string, options ...StreamableHTTPCOption) (*StreamableHTTP, error) {
+	parsedURL, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 
 	smc := &StreamableHTTP{
-		baseURL:    parsedURL,
+		serverURL:  parsedURL,
 		httpClient: &http.Client{},
 		headers:    make(map[string]string),
 		closed:     make(chan struct{}),
@@ -101,6 +101,8 @@ func NewStreamableHTTP(baseURL string, options ...StreamableHTTPCOption) (*Strea
 
 	// If OAuth is configured, set the base URL for metadata discovery
 	if smc.oauthHandler != nil {
+		// Extract base URL from server URL for metadata discovery
+		baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
 		smc.oauthHandler.SetBaseURL(baseURL)
 	}
 
@@ -131,7 +133,7 @@ func (c *StreamableHTTP) Close() error {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL.String(), nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.serverURL.String(), nil)
 			if err != nil {
 				fmt.Printf("failed to create close request\n: %v", err)
 				return
@@ -196,7 +198,7 @@ func (c *StreamableHTTP) SendRequest(
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL.String(), bytes.NewReader(requestBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverURL.String(), bytes.NewReader(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -415,7 +417,7 @@ func (c *StreamableHTTP) SendNotification(ctx context.Context, notification mcp.
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL.String(), bytes.NewReader(requestBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverURL.String(), bytes.NewReader(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
