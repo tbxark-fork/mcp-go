@@ -48,6 +48,54 @@ export default defineConfig({
       ],
     },
     {
+      text: 'Transport Options',
+      collapsed: false,
+      items: [
+        {
+          text: 'Overview',
+          link: '/transports',
+        },
+        {
+          text: 'STDIO Transport',
+          link: '/transports/stdio',
+        },
+        {
+          text: 'SSE Transport',
+          link: '/transports/sse',
+        },
+        {
+          text: 'HTTP Transport',
+          link: '/transports/http',
+        },
+        {
+          text: 'In-Process Transport',
+          link: '/transports/inprocess',
+        },
+      ],
+    },
+    {
+      text: 'Building MCP Clients',
+      collapsed: false,
+      items: [
+        {
+          text: 'Overview',
+          link: '/clients',
+        },
+        {
+          text: 'Client Basics',
+          link: '/clients/basics',
+        },
+        {
+          text: 'Client Operations',
+          link: '/clients/operations',
+        },
+        {
+          text: 'Client Transports',
+          link: '/clients/transports',
+        },
+      ],
+    },
+    {
       text: 'Example',
       link: '/example',
     },

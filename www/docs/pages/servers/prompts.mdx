@@ -55,9 +55,19 @@ func main() {
 }
 
 func handleCodeReview(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-    code := req.Params.Arguments["code"].(string)
-    language := getStringArg(req.Params.Arguments, "language", "auto-detect")
-    focus := getStringArg(req.Params.Arguments, "focus", "all")
+    // Extract arguments safely
+    args := req.Params.Arguments
+    if args == nil {
+        return nil, fmt.Errorf("missing required arguments")
+    }
+    
+    code, ok := args["code"].(string)
+    if !ok {
+        return nil, fmt.Errorf("code argument is required and must be a string")
+    }
+    
+    language := getStringArg(args, "language", "auto-detect")
+    focus := getStringArg(args, "focus", "all")
 
     // Build the prompt based on focus area
     var instructions string

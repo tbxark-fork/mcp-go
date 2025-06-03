@@ -82,7 +82,7 @@ func main() {
 }
 
 func handleGetTime(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    format := req.Params.Arguments["format"].(string)
+    format := req.GetString("format", "RFC3339")
     
     var timeStr string
     switch format {
@@ -106,7 +106,12 @@ func handleConfig(ctx context.Context, req mcp.ReadResourceRequest) (*mcp.ReadRe
 }
 
 func handleAnalyzeLogs(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-    logLevel := req.Params.Arguments["log_level"].(string)
+    logLevel := "error" // default value
+    if args := req.Params.Arguments; args != nil {
+        if level, ok := args["log_level"].(string); ok {
+            logLevel = level
+        }
+    }
     
     return &mcp.GetPromptResult{
         Description: "Analyze server logs for potential issues",
